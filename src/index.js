@@ -3,8 +3,6 @@ import pkg, {ActivityType} from 'discord.js';
 import fs from 'fs';
 import db from './database/db.js';
 import { fetchAnimeDetails } from './utils/anilist.js';
-//import { fetchMangaDetails } from './utils/querry.js';
-//import { setInterval } from 'timers/promises';
 
 const { Client, GatewayIntentBits, Collection } = pkg;
 
@@ -47,10 +45,11 @@ async function checkForNewReleases() {
             const episodeNumber = animeDetails.nextAiringEpisode.episode;
             const airingTimestamp = animeDetails.nextAiringEpisode.airingAt * 1000; // Convert to milliseconds
             const currentTime = Date.now();
+            const episodeAiredToday = new Date(airingTimestamp).toDateString() === new Date().toDateString();
 
             // Check if the episode has already aired by comparing the current time to the airing time
-            // Only notify if the episode aired within the last hour to prevent duplicates
-            if (currentTime >= airingTimestamp && currentTime - airingTimestamp <= 3600000) {
+            // Only notify if the episode aired today
+            if (currentTime >= airingTimestamp && episodeAiredToday) {
               console.log(`New episode of ${animeDetails.title.romaji} (Episode ${episodeNumber}) has been released!`);
               console.log(`Airing time: ${new Date(airingTimestamp).toISOString()}, Current time: ${new Date(currentTime).toISOString()}`);
               
@@ -101,7 +100,9 @@ client.once('ready', () => {
   });
 
   console.log(`Logged in as ${client.user.tag}!`);
-  setInterval(checkForNewReleases, 3600000);
+  
+  // Check for new releases every 30 minutes
+  setInterval(checkForNewReleases, 1800000); // 30 minutes interval
 });
 
 client.on('interactionCreate', async (interaction) => {

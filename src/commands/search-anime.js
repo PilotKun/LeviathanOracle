@@ -20,6 +20,7 @@ export default {
       await interaction.reply({ content: 'Please provide an anime name.', ephemeral: true });
       return;
     }
+
     await interaction.deferReply();
 
     try {
@@ -54,89 +55,96 @@ export default {
       const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000 });
 
       collector.on('collect', async i => {
-        const animeId = i.customId.split('_')[1];
-        const selectedAnime = animeList.find(anime => String(anime.mal_id) === animeId);
+        try {
+          
+          await i.update({ content: 'Fetching anime details...', components: [] });
 
-        if (!selectedAnime) {
-          await i.reply({ content: 'Anime not found.', ephemeral: true });
-          return;
-        }
+          const animeId = i.customId.split('_')[1];
+          const selectedAnime = animeList.find(anime => String(anime.mal_id) === animeId);
 
-        // Clean up the synopsis
-        let cleanSynopsis = selectedAnime.synopsis
-          ? selectedAnime.synopsis.replace(/<\/?[^>]+(>|$)/g, '')
-          : 'No description available.';
-        if (cleanSynopsis.length > 500) {
-          cleanSynopsis = cleanSynopsis.substring(0, 200) + '...';
-        }
+          if (!selectedAnime) {
+            return await i.followUp({ content: 'Anime not found.', ephemeral: true });
+          }
 
-        let status = selectedAnime.status || 'Unknown';
-        let nextEpisode = '';
+          // Clean up the synopsis
+          let cleanSynopsis = selectedAnime.synopsis
+            ? selectedAnime.synopsis.replace(/<\/?[^>]+(>|$)/g, '')
+            : 'No description available.';
+          if (cleanSynopsis.length > 500) {
+            cleanSynopsis = cleanSynopsis.substring(0, 200) + '...';
+          }
 
-        if (status.toLowerCase() === 'currently airing') {
-          try {
-            // Fetch timetable from AnimeSchedule API
-            const timetableResponse = await axios.get(`${BASE_URL}/timetables/sub`, {
-              headers: { 'Authorization': `Bearer ${API_KEY}` }
-            });
+          let status = selectedAnime.status || 'Unknown';
+          let nextEpisode = '';
 
-            const scheduleData = timetableResponse.data;
-            if (scheduleData && scheduleData.length > 0) {
-              // Find the anime in the timetable
-              const scheduledAnime = scheduleData.find(a => a.title.toLowerCase() === selectedAnime.title.toLowerCase());
-              
-              if (scheduledAnime) {
-                // Format: "Episode X - MM/DD/YY, HH:MM AM/PM"
-                const episodeDate = new Date(scheduledAnime.episodeDate);
-                const formattedDate = `${episodeDate.getMonth() + 1}/${episodeDate.getDate()}/${episodeDate.getFullYear()}, ${episodeDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}`;
+          if (status.toLowerCase() === 'currently airing') {
+            try {
+              // Fetch timetable from AnimeSchedule API
+              const timetableResponse = await axios.get(`${BASE_URL}/timetables/sub`, {
+                headers: { 'Authorization': `Bearer ${API_KEY}` }
+              });
 
-                nextEpisode = `**Episode ${scheduledAnime.episodeNumber || 'TBA'}** - ${formattedDate}`;
+              const scheduleData = timetableResponse.data;
+              if (scheduleData && scheduleData.length > 0) {
+                const scheduledAnime = scheduleData.find(a => a.title.toLowerCase() === selectedAnime.title.toLowerCase());
+                if (scheduledAnime) {
+                  const episodeDate = new Date(scheduledAnime.episodeDate);
+                  const formattedDate = `${episodeDate.getMonth() + 1}/${episodeDate.getDate()}/${episodeDate.getFullYear()}, ${episodeDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}`;
+
+                  nextEpisode = `**Episode ${scheduledAnime.episodeNumber || 'TBA'}** - ${formattedDate}`;
+                } else {
+                  nextEpisode = '**Next Episode:** To be aired.';
+                }
               } else {
                 nextEpisode = '**Next Episode:** To be aired.';
               }
-            } else {
-              nextEpisode = '**Next Episode:** To be aired.';
+            } catch (scheduleError) {
+              console.error('Error fetching anime schedule:', scheduleError.response ? scheduleError.response.data : scheduleError);
             }
-          } catch (scheduleError) {
-            console.error('Error fetching anime schedule:', scheduleError.response ? scheduleError.response.data : scheduleError);
+          }
+
+          if (status.toLowerCase() === 'finished airing') {
+            status = 'Completed';
+            nextEpisode = '';
+          }
+
+          const embed = new EmbedBuilder()
+            .setTitle(selectedAnime.title)
+            .setURL(selectedAnime.url)
+            .setDescription(
+              `**Score:** ${selectedAnime.score || 'N/A'}\n` +
+              `**Episodes:** ${selectedAnime.episodes || 'N/A'}\n` +
+              `**Status:** ${status}\n` +
+              (nextEpisode ? `${nextEpisode}\n` : '') +
+              `**Synopsis:** ${cleanSynopsis}`
+            )
+            .setImage(selectedAnime.images.jpg.image_url)
+            .setColor(0x00AE86);
+
+          await i.followUp({ embeds: [embed] });
+
+        } catch (error) {
+          if (error.code === 10062) {
+            console.warn('Interaction expired before response.');
+          } else {
+            console.error('Error updating interaction:', error);
           }
         }
+      });
 
-        // Remove next episode field if the anime is completed
-        if (status.toLowerCase() === 'finished airing') {
-          status = 'Completed';
-          nextEpisode = ''; // Don't display next episode info
-        }
-
-        const embed = new EmbedBuilder()
-          .setTitle(selectedAnime.title)
-          .setURL(selectedAnime.url)
-          .setDescription(
-            `**Score:** ${selectedAnime.score || 'N/A'}\n` +
-            `**Episodes:** ${selectedAnime.episodes || 'N/A'}\n` +
-            `**Status:** ${status}\n` +
-            (nextEpisode ? `${nextEpisode}\n` : '') +
-            `**Synopsis:** ${cleanSynopsis}`
-          )
-          .setImage(selectedAnime.images.jpg.image_url)
-          .setColor(0x00AE86);
-
+      collector.on('end', async collected => {
         try {
-          if (i.replied || i.deferred) {
-            await i.followUp({ content: '', embeds: [embed], components: [] });
-          } else {
-            await i.update({ content: '', embeds: [embed], components: [] });
+          if (collected.size === 0) {
+            const reply = await interaction.fetchReply();
+            if (reply) {
+              await interaction.editReply({ content: 'No selection made.', components: [] });
+            }
           }
         } catch (error) {
-          console.error('Error updating interaction:', error);
+          console.warn('Could not edit reply, message likely deleted.');
         }
       });
 
-      collector.on('end', collected => {
-        if (collected.size === 0) {
-          interaction.editReply({ content: 'No selection made.', components: [] });
-        }
-      });
     } catch (error) {
       console.error('Error fetching anime from Jikan:', error.response ? error.response.data : error);
       await interaction.editReply({ content: 'Failed to fetch anime details.', components: [] });
