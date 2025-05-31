@@ -31,7 +31,6 @@ try {
   console.error('Error reading command files:', err);
 }
 
-// Bruh if you want this block to support ES modules, DM me.
 (async () => {
   for (const file of commandFiles) {
     try {
@@ -179,8 +178,8 @@ client.once('ready', () => {
     client.user.setPresence({
       status: 'online',
       activities: [{
-        name: 'Sea of Knowledge',
-        type: ActivityType.Listening,
+        name: 'Your Notifications',
+        type: ActivityType.Watching,
       }],
     });
     console.log(`Logged in as ${client.user.tag}!`);
