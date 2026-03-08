@@ -1,6 +1,15 @@
-const { SlashCommandBuilder, ButtonStyle, MessageFlags } = require('discord.js');
-const { fetchDailySchedule } = require('../../utils/anime-schedule');
+const { SlashCommandBuilder, ButtonStyle, MessageFlags, InteractionContextType } = require('discord.js');
+const { getSchedule } = require('../../utils/API-services');
 const { embed, ui } = require('../../functions/ui');
+const { fuzzyScore } = require('../../utils/fuzzy');
+const db = require('../../schemas/db');
+
+async function getDailySchedule(day, airType = 'all') {
+  const list = await getSchedule(airType);
+  return (list || []).filter(a =>
+    new Date(a.episodeDate).toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase() === day.toLowerCase()
+  );
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -29,8 +38,7 @@ module.exports = {
         tomorrow.setDate(tomorrow.getDate() + 1);
         const dayName = tomorrow.toLocaleDateString('en-US', { weekday: 'long' });
 
-        console.log(`Fetching schedule for tomorrow: ${dayName}`);
-        const data = await fetchDailySchedule(dayName);
+        const data = await getDailySchedule(dayName);
         
         if (!data?.length) {
           await interaction.editReply({ content: 'No episodes found for tomorrow.' });
@@ -69,7 +77,7 @@ module.exports = {
         const tClick = await msg.awaitMessageComponent({ time: 30000 }).catch(() => null);
         if (!tClick) return interaction.editReply({ content: 'Timed out.', components: [] });
 
-        const data = await fetchDailySchedule(dClick.customId, tClick.customId);
+        const data = await getDailySchedule(dClick.customId, tClick.customId);
         if (!data?.length) return tClick.update({ content: 'No episodes found.', components: [] });
 
         let page = 1, total = Math.ceil(data.length / 10);
@@ -89,22 +97,27 @@ module.exports = {
         col.on('end', () => interaction.editReply({ components: [] }).catch(() => {}));
       } else if (filter === 'watchlist') {
         const userId = interaction.user.id;
-        const watchlist = await getUserWatchlist(userId);
+        const { rows: watchlist } = await db.query('SELECT anime_title FROM watchlists WHERE user_id = $1', [userId]);
         if (!watchlist?.length) {
           return interaction.editReply({ content: 'Your watchlist is empty.' });
         }
 
-        const data = await fetchDailySchedule('watchlist', watchlist);
-        if (!data?.length) {
-          return interaction.editReply({ content: 'No episodes found for your watchlist.' });
+        const titles = watchlist.map(r => r.anime_title);
+        const list = await getSchedule('sub');
+        const filtered = (list || []).filter(a => {
+          const schedTitles = [a.english, a.title, a.romaji].filter(Boolean);
+          return titles.some(wt => schedTitles.some(st => fuzzyScore(wt, st) >= 0.8));
+        });
+        if (!filtered?.length) {
+          return interaction.editReply({ content: 'No upcoming episodes found for your watchlist.' });
         }
 
-        let page = 1, total = Math.ceil(data.length / 10);
+        let page = 1, total = Math.ceil(filtered.length / 10);
         const getPage = () => ({
           content: 'Anime from your watchlist:',
           embeds: [embed({
             title: 'Your Watchlist',
-            fields: data.slice((page - 1) * 10, page * 10).map(a => ({
+            fields: filtered.slice((page - 1) * 10, page * 10).map(a => ({
               name: a.english || a.title,
               value: `**Ep ${a.episodeNumber}** - <t:${Math.floor(new Date(a.episodeDate).getTime() / 1000)}:f>`
             })),

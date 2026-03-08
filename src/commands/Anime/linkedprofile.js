@@ -1,11 +1,13 @@
-const { SlashCommandBuilder, ButtonStyle, MessageFlags } = require('discord.js');
-const axios = require('axios');
-const { fetchAniListUser } = require('../../utils/querry');
+const { SlashCommandBuilder, ButtonStyle, MessageFlags, InteractionContextType } = require('discord.js');
+const { getMALUser, getMALUserStats, getAniListUser } = require('../../utils/API-services');
 const db = require('../../schemas/db');
 const { embed, ui } = require('../../functions/ui');
 
 module.exports = {
-  data: new SlashCommandBuilder().setName('linkedprofile').setDescription('View your linked profile(s)'),
+  data: new SlashCommandBuilder()
+    .setName('linkedprofile')
+    .setDescription('View your linked profile(s)')
+    .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel),
 
   async execute(interaction) {
     try {
@@ -16,20 +18,18 @@ module.exports = {
 
       const fetchers = {
         mal: async () => {
-          const [{ data: u }, { data: s }] = await Promise.all([
-            axios.get(`https://api.jikan.moe/v4/users/${mal}`),
-            axios.get(`https://api.jikan.moe/v4/users/${mal}/statistics`)
-          ]);
+          const [u, s] = await Promise.all([getMALUser(mal), getMALUserStats(mal)]);
+          if (!u) return 'Failed to fetch MAL profile.';
           return embed({
-            title: `${u.data.username}'s MAL`, url: u.data.url, thumbnail: u.data.images.jpg.image_url, color: 0x2e51a2,
+            title: `${u.username}'s MAL`, url: u.url, thumbnail: u.images.jpg.image_url, color: 0x2e51a2,
             fields: [
-              { name: 'Anime', value: `Entries: ${s.data.anime.total_entries}\nScore: ${s.data.anime.mean_score}\nDays: ${s.data.anime.days_watched}`, inline: true },
-              { name: 'Manga', value: `Entries: ${s.data.manga.total_entries}\nScore: ${s.data.manga.mean_score}`, inline: true }
+              { name: 'Anime', value: `Entries: ${s.anime.total_entries}\nScore: ${s.anime.mean_score}\nDays: ${s.anime.days_watched}`, inline: true },
+              { name: 'Manga', value: `Entries: ${s.manga.total_entries}\nScore: ${s.manga.mean_score}`, inline: true }
             ]
           });
         },
         ani: async () => {
-          const u = await fetchAniListUser(ani);
+          const u = await getAniListUser(ani);
           if (!u) return 'Failed to fetch AniList.';
           return embed({
             title: `${u.name}'s AniList`, url: `https://anilist.co/user/${u.name}`, thumbnail: u.avatar.large, color: 0x02a9ff,

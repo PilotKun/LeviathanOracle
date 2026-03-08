@@ -1,11 +1,10 @@
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, InteractionContextType } = require('discord.js');
 
 module.exports = {
-    disabled: false,
-    //! The 'data' property defines the slash command's structure using SlashCommandBuilder.
     data: new SlashCommandBuilder()
         .setName('ping')
-        .setDescription('This is the ping command.'),
+        .setDescription('This is the ping command.')
+        .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel),
 
     async execute(interaction) {
         try {

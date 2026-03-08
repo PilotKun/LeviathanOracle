@@ -1,5 +1,6 @@
 const db = require('../../schemas/db');
 const { embed } = require('../../functions/ui');
+const { verifyMALUser, verifyAniListUser } = require('../../utils/API-services');
 
 module.exports = {
   disabled: false,
@@ -25,35 +26,26 @@ module.exports = {
       const discordId = message.author.id;
       const updateField = platform === 'mal' ? 'mal_username' : 'anilist_username';
 
+      const verify = platform === 'mal' ? await verifyMALUser(username) : await verifyAniListUser(username);
+      if (!verify.valid) {
+        return message.reply({ embeds: [embed({ title: 'Not Found', desc: `No ${platform.toUpperCase()} account found with username **${username}**. Please check the spelling.`, color: 0xFF0000 })] });
+      }
+
       const checkResult = await db.query(
-        `SELECT user_id FROM user_profiles WHERE ${updateField} = $1`,
+        `SELECT user_id FROM user_profiles WHERE LOWER(${updateField}) = LOWER($1)`,
         [username]
       );
 
       if (checkResult.rows.length > 0 && checkResult.rows[0].user_id !== discordId) {
-        return message.reply({ embeds: [embed({ title: 'Linking Failed', desc: `That username is already linked to <@${checkResult.rows[0].user_id}>.`, color: '#FF0000' })] });
+        return message.reply({ embeds: [embed({ title: 'Already Claimed', desc: `This ${platform.toUpperCase()} account is already linked to another user.`, color: 0xFF0000 })] });
       }
 
-      const selectResult = await db.query(
-        'SELECT * FROM user_profiles WHERE user_id = $1',
-        [discordId]
+      await db.query(
+        `INSERT INTO user_profiles (user_id, ${updateField}) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET ${updateField} = EXCLUDED.${updateField}`,
+        [discordId, verify.username]
       );
 
-      if (selectResult.rows.length > 0) {
-        await db.query(
-          `UPDATE user_profiles SET ${updateField} = $1 WHERE user_id = $2`,
-          [username, discordId]
-        );
-      } else {
-        const malUsername = platform === 'mal' ? username : null;
-        const anilistUsername = platform === 'anilist' ? username : null;
-        await db.query(
-          'INSERT INTO user_profiles (user_id, mal_username, anilist_username) VALUES ($1, $2, $3)',
-          [discordId, malUsername, anilistUsername]
-        );
-      }
-
-      message.reply({ embeds: [embed({ title: 'Account Linked', desc: `${platform === 'mal' ? 'MyAnimeList' : 'AniList'} account linked: ${username}`, color: '#00FF00' })] });
+      message.reply({ embeds: [embed({ title: 'Account Linked', desc: `${platform === 'mal' ? 'MyAnimeList' : 'AniList'} account linked: **${verify.username}**`, color: 0x00FF00 })] });
     } catch (error) {
       console.error('Error in linkprofile command:', error);
       return message.reply('An error occurred while executing this command. Please try again later.').catch(() => {});

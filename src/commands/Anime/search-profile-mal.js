@@ -1,13 +1,12 @@
-const { SlashCommandBuilder, ButtonStyle, StringSelectMenuBuilder, MessageFlags } = require('discord.js');
-const axios = require('axios');
+const { SlashCommandBuilder, ButtonStyle, StringSelectMenuBuilder, ActionRowBuilder, MessageFlags, InteractionContextType } = require('discord.js');
+const { getMALUser, getMALUserStats, getMALUserFavorites, getAnimeDetails, getMangaDetails } = require('../../utils/API-services');
 const { embed, ui } = require('../../functions/ui');
-
-const getJikan = async (path) => (await axios.get(`https://api.jikan.moe/v4/${path}`)).data.data;
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('search-profile-mal')
     .setDescription('Fetch MyAnimeList user profile')
+    .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
     .addStringOption(opt => opt.setName('username').setDescription('MAL username').setRequired(true)),
 
   async execute(interaction) {
@@ -15,7 +14,9 @@ module.exports = {
     await interaction.deferReply();
 
     try {
-      const [u, s] = await Promise.all([getJikan(`users/${user}`), getJikan(`users/${user}/statistics`)]);
+      const [u, s] = await Promise.all([getMALUser(user), getMALUserStats(user)]);
+      if (!u) return interaction.editReply({ content: 'User not found.', flags: MessageFlags.Ephemeral });
+
       const row = ui.row([
         { id: 'anime', label: 'Fav Anime', style: ButtonStyle.Primary },
         { id: 'manga', label: 'Fav Manga', style: ButtonStyle.Success }
@@ -34,17 +35,22 @@ module.exports = {
 
       const col = msg.createMessageComponentCollector({ time: 60000 });
       col.on('collect', async i => {
-        const favs = (await getJikan(`users/${user}/favorites`))[i.customId] || [];
-        if (!favs.length) return i.reply({ content: `No favorites found.`, flags: MessageFlags.Ephemeral });
+        const favs = await getMALUserFavorites(user);
+        const list = favs?.[i.customId] || [];
+        if (!list.length) return i.reply({ content: `No favorites found.`, flags: MessageFlags.Ephemeral });
 
         const menu = new StringSelectMenuBuilder().setCustomId('sel').setPlaceholder(`Select ${i.customId}`)
-          .addOptions(favs.slice(0, 25).map(f => ({ label: f.title.slice(0, 100), value: String(f.mal_id) })));
+          .addOptions(list.slice(0, 25).map(f => ({ label: f.title.slice(0, 100), value: String(f.mal_id) })));
 
         const reply = await i.update({ components: [new ActionRowBuilder().addComponents(menu)], fetchReply: true });
         const sel = await reply.awaitMessageComponent({ time: 30000 }).catch(() => null);
         if (!sel) return;
 
-        const item = await getJikan(`${i.customId}/${sel.values[0]}`);
+        const item = i.customId === 'anime'
+          ? await getAnimeDetails(sel.values[0])
+          : await getMangaDetails(sel.values[0]);
+        if (!item) return sel.reply({ content: 'Failed to fetch details.', flags: MessageFlags.Ephemeral });
+
         sel.reply({ flags: MessageFlags.Ephemeral, embeds: [embed({
           title: item.title, url: item.url, image: item.images.jpg.image_url, color: 0x2e51a2,
           fields: [

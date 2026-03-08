@@ -23,5 +23,20 @@ module.exports = {
 
     modal.addComponents(...inputs);
     return modal;
+  },
+
+  textInput: (options) => {
+    const input = new TextInputBuilder()
+      .setCustomId(options.id)
+      .setLabel(options.label)
+      .setStyle(options.style || TextInputStyle.Short)
+      .setRequired(options.required ?? true);
+
+    if (options.placeholder) input.setPlaceholder(options.placeholder);
+    if (options.minLength) input.setMinLength(options.minLength);
+    if (options.maxLength) input.setMaxLength(options.maxLength);
+    if (options.value) input.setValue(options.value);
+
+    return input;
   }
 };

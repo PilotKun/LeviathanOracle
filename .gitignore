@@ -5,10 +5,8 @@ node_modules/
 package-lock.json
 tests/
 docs.md
-Changelog.md
 config.json
 .github/
 localdb.db
 FetchTest.js
-NextUpdate.md
 errors/

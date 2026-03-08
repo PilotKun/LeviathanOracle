@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, InteractionContextType } = require('discord.js');
 const { fetchRSSFeedWithRetries, filterEnglishAnimeItems } = require('../../utils/nyaaRSS');
 const { embed } = require('../../functions/ui');
 
@@ -6,6 +6,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('nyaa')
     .setDescription('Search for English-translated anime on Nyaa')
+    .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
     .addStringOption(o => o.setName('query').setDescription('Search term').setRequired(true)),
 
   async execute(interaction) {

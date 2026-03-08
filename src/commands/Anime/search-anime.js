@@ -1,13 +1,13 @@
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const axios = require('axios');
+const { SlashCommandBuilder, MessageFlags, InteractionContextType } = require('discord.js');
 const { embed } = require('../../functions/ui');
-const { findNextSubEpisodeByTitles } = require('../../utils/anime-schedule');
+const { searchAnime, getAnimeDetails, getNextEpisode } = require('../../utils/API-services');
 const { bestMatch } = require('../../utils/fuzzy');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('search-anime')
     .setDescription('Fetch anime details from MyAnimeList/Jikan')
+    .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
     .addStringOption(o => o.setName('anime').setDescription('Anime name').setRequired(true).setAutocomplete(true)),
 
   async execute(interaction) {
@@ -16,7 +16,7 @@ module.exports = {
 
     try {
       if (!/^\d+$/.test(query)) {
-        const { data: { data: list } } = await axios.get('https://api.jikan.moe/v4/anime', { params: { q: query, limit: 10 } });
+        const list = await searchAnime(query, 10);
         if (!list?.length) return interaction.editReply('No results found.');
 
         const ranked = bestMatch(query, list, a => [a.title, a.title_english, a.title_japanese]);
@@ -24,8 +24,10 @@ module.exports = {
         return interaction.editReply({ embeds: [embed({ title: `Search: ${query.slice(0, 50)}`, fields, color: '#00AE86' })] });
       }
 
-      const { data: { data: a } } = await axios.get(`https://api.jikan.moe/v4/anime/${query}/full`);
-      const match = a.status?.toLowerCase().includes('airing') ? await findNextSubEpisodeByTitles([a.title, a.title_english, a.title_japanese]) : null;
+      const a = await getAnimeDetails(query);
+      if (!a) return interaction.editReply('Anime not found.');
+
+      const match = a.status?.toLowerCase().includes('airing') ? await getNextEpisode([a.title, a.title_english, a.title_japanese]) : null;
       const time = match ? Math.floor(new Date(match.episodeDate).getTime() / 1000) : null;
       const next = time ? `\n**Next:** Ep ${match.episodeNumber ?? 'TBA'} - <t:${time}:f> (<t:${time}:R>)` : '';
 
@@ -47,11 +49,11 @@ module.exports = {
     const val = interaction.options.getFocused();
     if (!val) return interaction.respond([]);
     try {
-      const { data: { data: list } } = await axios.get('https://api.jikan.moe/v4/anime', { params: { q: val, limit: 25 }, timeout: 2000 });
-      const ranked = bestMatch(val, list || [], a => [a.title, a.title_english, a.title_japanese]);
-      const out = (ranked.length ? ranked : (list || [])).map(a => ({
+      const list = await searchAnime(val, 25) || [];
+      const ranked = bestMatch(val, list, a => [a.title, a.title_english, a.title_japanese]);
+      const out = (ranked.length ? ranked : list).map(a => ({
         name: `${a.title_english || a.title}${a.year ? ` (${a.year})` : ''}`.slice(0, 100),
-        value: String(a.mal_id)
+        value: String(a.mal_id || a._anilistId)
       }));
       interaction.respond(out);
     } catch { interaction.respond([]); }

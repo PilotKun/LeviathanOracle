@@ -1,5 +1,4 @@
-const axios = require('axios');
-const { fetchAniListUser } = require('../../utils/querry');
+const { getMALUser, getMALUserStats, getAniListUser } = require('../../utils/API-services');
 const db = require('../../schemas/db');
 const { embed } = require('../../functions/ui');
 
@@ -28,27 +27,22 @@ module.exports = {
       const anilistUsername = row.anilist_username;
 
       if (malUsername && !anilistUsername) {
-        const userResponse = await axios.get(`https://api.jikan.moe/v4/users/${malUsername}`);
-        const userData = userResponse.data.data;
-        const statsResponse = await axios.get(`https://api.jikan.moe/v4/users/${malUsername}/statistics`);
-        const animeStats = statsResponse.data.data.anime || {};
-        const mangaStats = statsResponse.data.data.manga || {};
+        const [userData, statsData] = await Promise.all([getMALUser(malUsername), getMALUserStats(malUsername)]);
+        if (!userData) return message.reply('Failed to fetch MAL profile.');
 
         return message.reply({ embeds: [embed({
           title: `${userData.username}'s MyAnimeList Profile`,
           url: `https://myanimelist.net/profile/${userData.username}`,
           thumbnail: userData.images.jpg.image_url,
           fields: [
-            { name: 'Anime Stats', value: `**Total Entries:** ${animeStats.total_entries || 'N/A'}\n**Mean Score:** ${animeStats.mean_score || 'N/A'}\n**Days Watched:** ${animeStats.days_watched || 'N/A'}`, inline: true },
-            { name: 'Manga Stats', value: `**Total Entries:** ${mangaStats.total_entries || 'N/A'}\n**Mean Score:** ${mangaStats.mean_score || 'N/A'}\n**Days Read:** ${mangaStats.days_read || 'N/A'}`, inline: true }
+            { name: 'Anime Stats', value: `**Total Entries:** ${statsData.anime.total_entries || 'N/A'}\n**Mean Score:** ${statsData.anime.mean_score || 'N/A'}\n**Days Watched:** ${statsData.anime.days_watched || 'N/A'}`, inline: true },
+            { name: 'Manga Stats', value: `**Total Entries:** ${statsData.manga.total_entries || 'N/A'}\n**Mean Score:** ${statsData.manga.mean_score || 'N/A'}\n**Days Read:** ${statsData.manga.days_read || 'N/A'}`, inline: true }
           ],
           color: 0x2e51a2
         })] });
       } else if (anilistUsername && !malUsername) {
-        const userData = await fetchAniListUser(anilistUsername);
-        if (!userData) {
-          return message.reply('Failed to fetch AniList profile.');
-        }
+        const userData = await getAniListUser(anilistUsername);
+        if (!userData) return message.reply('Failed to fetch AniList profile.');
         
         const daysWatched = (userData.statistics.anime.minutesWatched / 1440).toFixed(1);
         return message.reply({ embeds: [embed({

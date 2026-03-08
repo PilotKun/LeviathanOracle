@@ -1,9 +1,12 @@
-const { SlashCommandBuilder, TextInputStyle, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, TextInputStyle, MessageFlags, InteractionContextType } = require('discord.js');
 const { modal, embed } = require('../../functions/ui');
 const { bot: { reportChannelId: chanId } } = require('../../../config.json');
 
 module.exports = {
-  data: new SlashCommandBuilder().setName('report').setDescription('Report a bug'),
+  data: new SlashCommandBuilder()
+    .setName('report')
+    .setDescription('Report a bug')
+    .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel),
 
   async execute(interaction) {
     try {

@@ -8,11 +8,8 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
     discord_username TEXT,
-    anime_id INTEGER NOT NULL,
     anime_title TEXT NOT NULL,
-    next_airing_at INTEGER,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, anime_id)
+    UNIQUE(user_id, anime_title)
   );
   CREATE TABLE IF NOT EXISTS user_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,15 +29,14 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role_id TEXT NOT NULL,
     guild_id TEXT NOT NULL,
-    anime_id INTEGER NOT NULL,
     anime_title TEXT NOT NULL,
-    next_airing_at INTEGER,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(role_id, anime_id)
+    UNIQUE(role_id, anime_title)
   );
   CREATE TABLE IF NOT EXISTS guild_settings (
     guild_id TEXT PRIMARY KEY,
     notification_channel_id TEXT,
+    daily_schedule_channel_id TEXT,
+    daily_schedule_enabled TEXT DEFAULT 'false',
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS bot_state (
@@ -48,13 +44,17 @@ db.exec(`
     value TEXT NOT NULL,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    anime_id INTEGER NOT NULL UNIQUE,
+    anime_title TEXT NOT NULL,
+    next_airing_at INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
   CREATE INDEX IF NOT EXISTS idx_watchlists_user_id ON watchlists(user_id);
-  CREATE INDEX IF NOT EXISTS idx_watchlists_next_airing ON watchlists(next_airing_at);
   CREATE INDEX IF NOT EXISTS idx_role_notifications_guild ON role_notifications(guild_id);
-  CREATE INDEX IF NOT EXISTS idx_role_notifications_next_airing ON role_notifications(next_airing_at);
+  CREATE INDEX IF NOT EXISTS idx_schedules_next_airing ON schedules(next_airing_at);
 `);
-
-try { db.exec('ALTER TABLE watchlists ADD COLUMN discord_username TEXT'); } catch {}
 
 module.exports = {
   type: 'sqlite',

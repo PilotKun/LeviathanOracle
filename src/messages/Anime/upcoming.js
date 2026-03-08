@@ -1,4 +1,4 @@
-const { fetchDailySchedule } = require('../../utils/anime-schedule');
+const { getDailySchedule } = require('../../utils/API-services');
 const { embed, ui } = require('../../functions/ui');
 
 module.exports = {
@@ -16,7 +16,7 @@ module.exports = {
       const days = ['saturday', 'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
       if (!days.includes(day)) return message.reply(`Usage: \`!upcoming <day> [type]\`\n**Days:** ${days.join(', ')}`);
 
-      const animeData = await fetchDailySchedule(day, airType);
+      const animeData = await getDailySchedule(day, airType);
       if (!animeData?.length) return message.reply(`No episodes found for **${day}** (${airType}).`);
 
       let page = 1;

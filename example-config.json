@@ -1,22 +1,22 @@
 {
   "bot": {
-    "token": "DISCORD_TOKEN_HERE",
-    "id": "DISCORD_BOT_ID_HERE",
+    "token": "",
+    "id": "",
     "admins": [
-      "ADMIN_DISCORD_ID_1_HERE",
-      "ADMIN_DISCORD_ID_2_HERE"
+      "",
+      ""
     ],
     "ownerId": [
-      "OWNER_DISCORD_ID_HERE",
-      "CO-OWNER_DISCORD_ID_HERE"
+      "",
+      ""
     ],
     "developerCommandsServerIds": [
-      "DISCORD_DEVELOPER_COMMANDS_SERVER_ID_HERE"
+      ""
     ],
-    "reportChannelId": "REPORT_CHANNEL_ID_HERE"
+    "reportChannelId": ""
   },
   "database": {
-    "mongodbUrl": "MONGODB_URL_HERE",
+    "mongodbUrl": "",
     "postgressql": {
       "enabled": false,
       "config": {
@@ -37,13 +37,13 @@
     }
   },
   "apitokens": {
-    "animeschedule": "ANIMESCHEDULE_API_TOKEN_HERE"
+    "animeschedule": ""
   },
   "logging": {
-    "guildJoinLogsId": "SERVER_JOIN_LOGS_CHANNEL_ID_HERE",
-    "guildLeaveLogsId": "SERVER_LEAVE_LOGS_CHANNEL_ID_HERE",
-    "commandLogsChannelId": "COMMAND_LOGS_CHANNEL_ID_HERE",
-    "errorLogs": "ERROR_LOGS_WEBHOOK_URL_HERE"
+    "guildJoinLogsId": "",
+    "guildLeaveLogsId": "",
+    "commandLogsChannelId": "",
+    "errorLogs": ""
   },
   "prefix": {
     "value": "!"

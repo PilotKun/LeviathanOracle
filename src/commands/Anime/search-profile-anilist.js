@@ -1,16 +1,17 @@
-const { SlashCommandBuilder, ButtonStyle, StringSelectMenuBuilder, MessageFlags } = require('discord.js');
-const { fetchAniListUser } = require('../../utils/querry');
+const { SlashCommandBuilder, ButtonStyle, StringSelectMenuBuilder, ActionRowBuilder, MessageFlags, InteractionContextType } = require('discord.js');
+const { getAniListUser } = require('../../utils/API-services');
 const { embed, ui } = require('../../functions/ui');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('search-profile-anilist')
     .setDescription('Fetch AniList user profile')
+    .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
     .addStringOption(o => o.setName('username').setDescription('AniList username').setRequired(true)),
 
   async execute(interaction) {
     try {
-      const u = await fetchAniListUser(interaction.options.getString('username'));
+      const u = await getAniListUser(interaction.options.getString('username'));
       if (!u) return interaction.reply({ content: 'User not found.', flags: MessageFlags.Ephemeral });
 
       const { anime: a, manga: m } = u.statistics;
@@ -36,7 +37,7 @@ module.exports = {
         if (!list.length) return i.reply({ content: `No favorites.`, flags: MessageFlags.Ephemeral });
 
         const menu = new StringSelectMenuBuilder().setCustomId('sel').setPlaceholder(`Select ${type}`)
-          .addOptions(list.slice(0, 25).map(x => ({ label: x.title.romaji.slice(0, 100), value: String(x.id) })));
+          .addOptions(list.slice(0, 25).map(x => ({ label: (x.title.english || x.title.romaji).slice(0, 100), value: String(x.id) })));
 
         const reply = await i.update({ components: [new ActionRowBuilder().addComponents(menu)], fetchReply: true });
         const sel = await reply.awaitMessageComponent({ time: 30000 }).catch(() => null);
@@ -44,7 +45,7 @@ module.exports = {
 
         const item = list.find(x => String(x.id) === sel.values[0]);
         sel.reply({ flags: MessageFlags.Ephemeral, embeds: [embed({
-          title: item.title.romaji, url: `https://anilist.co/${type}/${item.id}`, image: item.coverImage.large, color: 0x2e51a2,
+          title: item.title.english || item.title.romaji, url: `https://anilist.co/${type}/${item.id}`, image: item.coverImage.large, color: 0x2e51a2,
           fields: [{ name: 'Score', value: `${item.averageScore || 'N/A'}%`, inline: true }]
         })]});
       });

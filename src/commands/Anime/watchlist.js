@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, MessageFlags, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, AttachmentBuilder, InteractionContextType } = require('discord.js');
 const db = require('../../schemas/db');
-const { fetchAnimeDetails, fetchAnimeDetailsById, fetchAnimeByMalId } = require('../../utils/anilist');
+const { searchAnimeAniList, getAnimeByAniListId, getAnimeByMalId } = require('../../utils/API-services');
 const { bestMatch } = require('../../utils/fuzzy');
 const scheduler = require('../../functions/notificationScheduler');
 const { embed } = require('../../functions/ui');
@@ -8,17 +8,20 @@ const axios = require('axios');
 
 const reply = (i, title, desc, color) => i.editReply({ embeds: [embed({ title, desc, color })] });
 
-const INSERT_SQL = 'INSERT INTO watchlists (user_id, discord_username, anime_id, anime_title, next_airing_at) VALUES ($1, $2, $3, $4, $5) RETURNING id';
+const UPSERT_SCHEDULE = 'INSERT INTO schedules (anime_id, anime_title, next_airing_at) VALUES ($1, $2, $3) ON CONFLICT (anime_id) DO UPDATE SET next_airing_at = EXCLUDED.next_airing_at, anime_title = EXCLUDED.anime_title';
 
 async function insertAnime(userId, username, anime, titleFallback) {
-  const { rowCount } = await db.query('SELECT 1 FROM watchlists WHERE user_id = $1 AND anime_id = $2', [userId, anime?.id]);
+  const title = anime.title?.english || anime.title?.romaji || titleFallback;
+  const { rowCount } = await db.query('SELECT 1 FROM watchlists WHERE user_id = $1 AND anime_title = $2', [userId, title]);
   if (rowCount || !anime) return false;
 
-  const title = anime.title?.english || anime.title?.romaji || titleFallback;
   const airDate = anime.nextAiringEpisode?.airingAt * 1000 || null;
-  const { rows } = await db.query(INSERT_SQL, [userId, username, anime.id, title, airDate]);
+  await db.query('INSERT INTO watchlists (user_id, discord_username, anime_title) VALUES ($1, $2, $3)', [userId, username, title]);
 
-  if (airDate) scheduler.scheduleNotification({ id: rows[0].id, user_id: userId, anime_title: title, next_airing_at: airDate });
+  if (airDate) {
+    await db.query(UPSERT_SCHEDULE, [anime.id, title, airDate]);
+    scheduler.schedule({ anime_id: anime.id, anime_title: title, next_airing_at: airDate });
+  }
   return true;
 }
 
@@ -27,6 +30,7 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('watchlist')
     .setDescription('Manage your anime watchlist')
+    .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
     .addSubcommand(s => s.setName('add').setDescription('Add anime').addStringOption(o => o.setName('title').setDescription('Anime title to add').setRequired(true).setAutocomplete(true)))
     .addSubcommand(s => s.setName('remove').setDescription('Remove anime').addStringOption(o => o.setName('title').setDescription('Anime title to remove').setRequired(true)))
     .addSubcommand(s => s.setName('view').setDescription('View a user\'s watchlist').addUserOption(o => o.setName('user').setDescription('User to view (leave empty for your own)')))
@@ -41,13 +45,14 @@ module.exports = {
       if (sub === 'add') {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const input = interaction.options.getString('title');
-        const data = /^\d+$/.test(input) ? await fetchAnimeDetailsById(input) : await fetchAnimeDetails(input);
+        const data = /^\d+$/.test(input) ? await getAnimeByAniListId(input) : await searchAnimeAniList(input);
         const anime = Array.isArray(data) ? data[0] : data;
 
         if (!anime) return reply(interaction, 'Not Found', 'Anime not found.', 'Red');
 
-        const { rowCount } = await db.query('SELECT 1 FROM watchlists WHERE user_id = $1 AND anime_id = $2', [userId, anime.id]);
-        if (rowCount) return reply(interaction, 'Duplicate', 'Already in your list.', 'Yellow');
+        const title = anime.title.english || anime.title.romaji;
+        const { rowCount } = await db.query('SELECT 1 FROM watchlists WHERE user_id = $1 AND anime_title = $2', [userId, title]);
+        if (rowCount) return reply(interaction, 'Watchlist', 'Already in your list.', 'Yellow');
 
         const inserted = await insertAnime(userId, username, anime);
         if (!inserted) {
@@ -64,7 +69,15 @@ module.exports = {
         if (!match) return reply(interaction, 'Not Found', 'No match in your list.', 'Yellow');
 
         await db.query('DELETE FROM watchlists WHERE id = $1', [match.id]);
-        scheduler.cancelNotification(match.id);
+        const { rowCount: wc } = await db.query('SELECT 1 FROM watchlists WHERE anime_title = $1', [match.anime_title]);
+        const { rowCount: rc } = await db.query('SELECT 1 FROM role_notifications WHERE anime_title = $1', [match.anime_title]);
+        if (!wc && !rc) {
+          const { rows: sched } = await db.query('SELECT anime_id FROM schedules WHERE anime_title = $1', [match.anime_title]);
+          if (sched[0]) {
+            await db.query('DELETE FROM schedules WHERE anime_id = $1', [sched[0].anime_id]);
+            scheduler.cancel(sched[0].anime_id);
+          }
+        }
         return reply(interaction, 'Removed', `**${match.anime_title}** removed.`, 'Green');
       }
 
@@ -87,7 +100,7 @@ module.exports = {
       if (sub === 'export') {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const format = interaction.options.getString('format');
-        const { rows } = await db.query('SELECT anime_id, anime_title FROM watchlists WHERE user_id = $1', [userId]);
+        const { rows } = await db.query('SELECT w.anime_title, s.anime_id FROM watchlists w LEFT JOIN schedules s ON w.anime_title = s.anime_title WHERE w.user_id = $1', [userId]);
 
         if (!rows.length) return reply(interaction, 'Empty', 'Your watchlist is empty.', 'Yellow');
 
@@ -114,7 +127,7 @@ module.exports = {
           const ids = fileContent.match(/<series_animedb_id>(\d+)<\/series_animedb_id>/g) || [];
           for (const tag of ids) {
             const malId = parseInt(tag.match(/(\d+)/)[1]);
-            const anime = await fetchAnimeByMalId(malId);
+            const anime = await getAnimeByMalId(malId);
             (await insertAnime(userId, username, anime, `MAL#${malId}`)) ? imported++ : skipped++;
           }
         } else {
@@ -123,7 +136,7 @@ module.exports = {
           if (!Array.isArray(entries)) return reply(interaction, 'Error', 'Invalid export format.', 'Red');
 
           for (const entry of entries) {
-            const anime = await fetchAnimeDetailsById(entry.anilistId);
+            const anime = await getAnimeByAniListId(entry.anilistId);
             (await insertAnime(userId, username, anime || { id: entry.anilistId }, entry.title)) ? imported++ : skipped++;
           }
         }
@@ -141,7 +154,7 @@ module.exports = {
   async autocomplete(interaction) {
     const value = interaction.options.getFocused();
     if (!value) return interaction.respond([]);
-    const results = (await fetchAnimeDetails(value)) || [];
+    const results = (await searchAnimeAniList(value)) || [];
     const ranked = bestMatch(value, results, a => [a.title?.english, a.title?.romaji, a.title?.native]);
     await interaction.respond(
       (ranked.length ? ranked : results).slice(0, 25).map(a => ({ name: (a.title.english || a.title.romaji).substring(0, 100), value: String(a.id) }))

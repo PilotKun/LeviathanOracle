@@ -1,12 +1,13 @@
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const axios = require('axios');
+const { SlashCommandBuilder, MessageFlags, InteractionContextType } = require('discord.js');
 const { embed } = require('../../functions/ui');
+const { searchManga, getMangaDetails } = require('../../utils/API-services');
 const { bestMatch } = require('../../utils/fuzzy');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('search-manga')
     .setDescription('Fetch manga details from MAL')
+    .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
     .addStringOption(o => o.setName('manga').setDescription('Manga name').setRequired(true).setAutocomplete(true)),
 
   async execute(interaction) {
@@ -15,7 +16,8 @@ module.exports = {
 
     try {
       if (/^\d+$/.test(query)) {
-        const { data: { data: m } } = await axios.get(`https://api.jikan.moe/v4/manga/${query}/full`);
+        const m = await getMangaDetails(query);
+        if (!m) return interaction.editReply('Manga not found.');
         return interaction.editReply({
           embeds: [embed({
             title: m.title || m.title_english,
@@ -25,12 +27,12 @@ module.exports = {
         });
       }
 
-      const { data: { data: list } } = await axios.get('https://api.jikan.moe/v4/manga', { params: { q: query, limit: 10 } });
+      const list = await searchManga(query, 10);
       if (!list?.length) return interaction.editReply('No results found.');
 
       const ranked = bestMatch(query, list, m => [m.title, m.title_english, m.title_japanese]);
       const fields = (ranked.length ? ranked : list).slice(0, 10).map((m, i) => ({ name: `${i + 1}. ${m.title}`, value: `ID: \`${m.mal_id}\` | [MAL](${m.url})` }));
-      
+
       interaction.editReply({ embeds: [embed({ title: `Search: ${query.slice(0, 50)}`, fields, color: '#00AE86' })] });
     } catch (e) {
       console.error(e);
@@ -43,11 +45,11 @@ module.exports = {
     const val = interaction.options.getFocused();
     if (!val) return interaction.respond([]);
     try {
-      const { data: { data: list } } = await axios.get('https://api.jikan.moe/v4/manga', { params: { q: val, limit: 20 }, timeout: 2000 });
-      const ranked = bestMatch(val, list || [], m => [m.title, m.title_english, m.title_japanese]);
-      const out = (ranked.length ? ranked : (list || [])).map(m => ({
+      const list = await searchManga(val, 20) || [];
+      const ranked = bestMatch(val, list, m => [m.title, m.title_english, m.title_japanese]);
+      const out = (ranked.length ? ranked : list).map(m => ({
         name: `${m.title_english || m.title}${m.published?.prop?.from?.year ? ` (${m.published.prop.from.year})` : ''}`.slice(0, 100),
-        value: String(m.mal_id)
+        value: String(m.mal_id || m._anilistId)
       }));
       interaction.respond(out);
     } catch { interaction.respond([]); }

@@ -1,6 +1,6 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize } = require('discord.js');
 
-module.exports = (options = {}) => {
+const createEmbed = (options = {}) => {
   const embed = new EmbedBuilder()
     .setColor(options.color || '#0099ff')
     .setTimestamp();
@@ -16,3 +16,27 @@ module.exports = (options = {}) => {
 
   return embed;
 };
+
+createEmbed.v2 = (options = {}) => {
+  const c = new ContainerBuilder();
+  if (options.color) c.setAccentColor(options.color);
+  if (options.title) c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${options.title}`));
+  if (options.title && (options.desc || options.description))
+    c.addSeparatorComponents(new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small));
+  if (options.desc || options.description)
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(options.desc || options.description));
+  if (options.fields?.length) {
+    c.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+    options.fields.forEach(f =>
+      c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${f.name}**\n${f.value}`))
+    );
+  }
+  if (options.footer) {
+    c.addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small));
+    const footerText = typeof options.footer === 'string' ? options.footer : options.footer.text;
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footerText}`));
+  }
+  return c;
+};
+
+module.exports = createEmbed;

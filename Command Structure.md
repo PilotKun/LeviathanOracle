@@ -1,4 +1,4 @@
-## Command Module Structure (V2)
+## Command Module Structure
 
 ### Shared Export Properties (Slash & Prefix)
 
