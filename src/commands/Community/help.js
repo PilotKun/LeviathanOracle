@@ -1,10 +1,10 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType 
-} = require('discord.js');
+const { SlashCommandBuilder, ButtonStyle, ComponentType, MessageFlags } = require('discord.js');
+const { embed, ui } = require('../../functions/ui');
 
 const HELP_PAGES = {
-    help_about: new EmbedBuilder()
-        .setColor(0x0099ff)
-        .setDescription(
+    help_about: () => embed.v2({
+        color: 0x0099ff,
+        desc:
             '# LeviathanOracle\n\n' +
             'A powerful Discord bot built to manage your anime experience. Link profiles, track watchlists, and search for your favorite series with ease.\n\n' +
             '### Core Features\n' +
@@ -14,11 +14,11 @@ const HELP_PAGES = {
             '• **Schedule** - Stay updated with upcoming episodes.\n\n' +
             '### Credits\n' +
             '• **Developers:** [Pilot_kun](https://github.com/PilotKun) & [Niko](https://github.com/nikovaxx)'
-        ),
+    }),
 
-    help_commands: new EmbedBuilder()
-        .setColor(0x2ecc71)
-        .setDescription(
+    help_commands: () => embed.v2({
+        color: 0x2ecc71,
+        desc:
             '## Slash Commands\n\n' +
             '### Watchlist\n' +
             '• `/watchlist add <title>` - Add to your list\n' +
@@ -40,11 +40,11 @@ const HELP_PAGES = {
             '• `/preference` - Bot & notification settings\n' +
             '• `/rolenotification` - Manage role-based alerts\n' +
             '• `/report` - Submit a bug report'
-        ),
+    }),
 
-    help_prefix: new EmbedBuilder()
-        .setColor(0xe74c3c)
-        .setDescription(
+    help_prefix: () => embed.v2({
+        color: 0xe74c3c,
+        desc:
             '## Prefix Commands\n' +
             '*Default Prefix:* `!`\n\n' +
             '• `!upcoming <day> [type]` - View schedule (alias: `!schedule`)\n' +
@@ -54,7 +54,7 @@ const HELP_PAGES = {
             '• `!ping` - Check latency (alias: `!p`)\n' +
             '• `!preference <type> [value]` - Settings (alias: `!pref`, `!settings`)\n' +
             '• `!rolenotification <add|remove|list>` - Role alerts (alias: `!rolenoti`, `!rn`)'
-        )
+    })
 };
 
 module.exports = {
@@ -64,23 +64,22 @@ module.exports = {
         .setDescription('Displays information about the bot and its commands.'),
 
     async execute(interaction) {
-        const buttonRow = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder().setCustomId('help_about').setLabel('About').setStyle(ButtonStyle.Primary),
-                new ButtonBuilder().setCustomId('help_commands').setLabel('Slash Commands').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('help_prefix').setLabel('Prefix Commands').setStyle(ButtonStyle.Danger)
-            );
+        const buttonRow = ui.row([
+            { id: 'help_about', label: 'About', style: ButtonStyle.Primary },
+            { id: 'help_commands', label: 'Slash Commands', style: ButtonStyle.Success },
+            { id: 'help_prefix', label: 'Prefix Commands', style: ButtonStyle.Danger }
+        ]);
 
         await interaction.deferReply();
 
         const response = await interaction.editReply({
-            embeds: [HELP_PAGES['help_about']],
-            components: [buttonRow]
+            components: [HELP_PAGES['help_about'](), buttonRow],
+            flags: MessageFlags.IsComponentsV2
         });
 
         const collector = response.createMessageComponentCollector({
             componentType: ComponentType.Button,
-            time: 300_000 
+            time: 300_000
         });
 
         collector.on('collect', async i => {
@@ -89,7 +88,8 @@ module.exports = {
             }
 
             await i.update({
-                embeds: [HELP_PAGES[i.customId]],
+                components: [HELP_PAGES[i.customId](), buttonRow],
+                flags: MessageFlags.IsComponentsV2
             });
         });
 
