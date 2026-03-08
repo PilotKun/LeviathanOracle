@@ -17,13 +17,16 @@ const pool = new Pool({
 
 pool.query(`
   CREATE TABLE IF NOT EXISTS watchlists (
-    id SERIAL PRIMARY KEY, user_id VARCHAR(255) NOT NULL, anime_id INTEGER NOT NULL,
-    anime_title TEXT NOT NULL, next_airing_at BIGINT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, anime_id)
+    id SERIAL PRIMARY KEY, user_id VARCHAR(255) NOT NULL,
+    anime_title TEXT NOT NULL,
+    UNIQUE(user_id, anime_title)
   );
   CREATE TABLE IF NOT EXISTS user_profiles (
-    id SERIAL PRIMARY KEY, user_id VARCHAR(255) NOT NULL UNIQUE,
-    mal_username VARCHAR(255), anilist_username VARCHAR(255), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL UNIQUE,
+    mal_username VARCHAR(255),
+    anilist_username VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS user_preferences (
     user_id VARCHAR(255) PRIMARY KEY,
@@ -36,24 +39,31 @@ pool.query(`
     id SERIAL PRIMARY KEY,
     role_id VARCHAR(255) NOT NULL,
     guild_id VARCHAR(255) NOT NULL,
-    anime_id INTEGER NOT NULL,
     anime_title TEXT NOT NULL,
-    next_airing_at BIGINT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(role_id, anime_id)
+    UNIQUE(role_id, anime_title)
   );
   CREATE TABLE IF NOT EXISTS guild_settings (
     guild_id VARCHAR(255) PRIMARY KEY,
     notification_channel_id VARCHAR(255),
+    daily_schedule_channel_id VARCHAR(255),
+    daily_schedule_enabled VARCHAR(10) DEFAULT 'false',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS bot_state (
-    key VARCHAR(255) PRIMARY KEY, value TEXT NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    key VARCHAR(255) PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS schedules (
+    id SERIAL PRIMARY KEY,
+    anime_id INTEGER NOT NULL UNIQUE,
+    anime_title TEXT NOT NULL,
+    next_airing_at BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS idx_watchlists_user_id ON watchlists(user_id);
-  CREATE INDEX IF NOT EXISTS idx_watchlists_next_airing ON watchlists(next_airing_at);
   CREATE INDEX IF NOT EXISTS idx_role_notifications_guild ON role_notifications(guild_id);
-  CREATE INDEX IF NOT EXISTS idx_role_notifications_next_airing ON role_notifications(next_airing_at);
+  CREATE INDEX IF NOT EXISTS idx_schedules_next_airing ON schedules(next_airing_at);
 `).catch(err => console.error('PostgreSQL Init Error:', err.message));
 
   module.exports = {
