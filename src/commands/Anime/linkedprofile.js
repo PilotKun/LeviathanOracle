@@ -10,69 +10,53 @@ module.exports = {
     .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel),
 
   async execute(interaction) {
+    const { rows: [p] } = await db.query('SELECT * FROM user_profiles WHERE user_id = $1', [interaction.user.id]);
+    if (!p) return interaction.reply({ content: 'No profiles linked.', flags: MessageFlags.Ephemeral });
+
+    const fetch = {
+      mal: async () => {
+        const [u, s] = await Promise.all([getMALUser(p.mal_username), getMALUserStats(p.mal_username)]);
+        return u ? embed({
+          title: `${u.username}'s MAL`, url: u.url, thumbnail: u.images.jpg.image_url, color: 0x2e51a2,
+          fields: [
+            { name: 'Anime', value: `Entries: ${s.anime.total_entries}\nScore: ${s.anime.mean_score}\nDays: ${s.anime.days_watched}`, inline: true },
+            { name: 'Manga', value: `Entries: ${s.manga.total_entries}\nScore: ${s.manga.mean_score}`, inline: true }
+          ]
+        }) : 'Failed to fetch MAL.';
+      },
+      ani: async () => {
+        const u = await getAniListUser(p.anilist_username);
+        return u ? embed({
+          title: `${u.name}'s AniList`, url: `https://anilist.co/user/${u.name}`, thumbnail: u.avatar.large, color: 0x02a9ff,
+          fields: [
+            { name: 'Anime', value: `Count: ${u.statistics.anime.count}\nScore: ${u.statistics.anime.meanScore}\nDays: ${(u.statistics.anime.minutesWatched / 1440).toFixed(1)}`, inline: true },
+            { name: 'Manga', value: `Count: ${u.statistics.manga.count}\nChapters: ${u.statistics.manga.chaptersRead}`, inline: true }
+          ]
+        }) : 'Failed to fetch AniList.';
+      }
+    };
+
     try {
-      const { rows } = await db.query('SELECT * FROM user_profiles WHERE user_id = $1', [interaction.user.id]);
-      if (!rows.length) return interaction.reply({ content: 'No profiles linked.', flags: MessageFlags.Ephemeral });
-
-      const { mal_username: mal, anilist_username: ani } = rows[0];
-
-      const fetchers = {
-        mal: async () => {
-          const [u, s] = await Promise.all([getMALUser(mal), getMALUserStats(mal)]);
-          if (!u) return 'Failed to fetch MAL profile.';
-          return embed({
-            title: `${u.username}'s MAL`, url: u.url, thumbnail: u.images.jpg.image_url, color: 0x2e51a2,
-            fields: [
-              { name: 'Anime', value: `Entries: ${s.anime.total_entries}\nScore: ${s.anime.mean_score}\nDays: ${s.anime.days_watched}`, inline: true },
-              { name: 'Manga', value: `Entries: ${s.manga.total_entries}\nScore: ${s.manga.mean_score}`, inline: true }
-            ]
-          });
-        },
-        ani: async () => {
-          const u = await getAniListUser(ani);
-          if (!u) return 'Failed to fetch AniList.';
-          return embed({
-            title: `${u.name}'s AniList`, url: `https://anilist.co/user/${u.name}`, thumbnail: u.avatar.large, color: 0x02a9ff,
-            fields: [
-              { name: 'Anime', value: `Count: ${u.statistics.anime.count}\nScore: ${u.statistics.anime.meanScore}\nDays: ${(u.statistics.anime.minutesWatched / 1440).toFixed(1)}`, inline: true },
-              { name: 'Manga', value: `Count: ${u.statistics.manga.count}\nChapters: ${u.statistics.manga.chaptersRead}`, inline: true }
-            ]
-          });
-        }
-      };
-
-      // Handle dual-profile selection
-      if (mal && ani) {
+      if (p.mal_username && p.anilist_username) {
         const row = ui.row([
-          { id: 'mal', label: 'MyAnimeList', style: ButtonStyle.Primary },
+          { id: 'mal', label: 'MAL', style: ButtonStyle.Primary },
           { id: 'ani', label: 'AniList', style: ButtonStyle.Primary }
         ]);
 
-        const msg = await interaction.reply({ content: 'Choose a profile:', components: [row], flags: MessageFlags.Ephemeral, fetchReply: true });
-        
-        const i = await msg.awaitMessageComponent({ 
-          filter: (i) => i.user.id === interaction.user.id, 
-          time: 30000 
-        }).catch(() => null);
+        const msg = await interaction.reply({ content: 'Select profile:', components: [row], flags: MessageFlags.Ephemeral, fetchReply: true });
+        const btn = await msg.awaitMessageComponent({ time: 30000 }).catch(() => null);
+        if (!btn) return interaction.editReply({ content: 'Timed out.', components: [] });
 
-        if (!i) return interaction.editReply({ content: 'Timed out.', components: [] });
-        
-        const res = await fetchers[i.customId]();
-        return i.update({ content: typeof res === 'string' ? res : null, embeds: typeof res === 'object' ? [res] : [], components: [] });
+        const res = await fetch[btn.customId]();
+        return btn.update({ content: typeof res === 'string' ? res : null, embeds: [res].flat(), components: [] });
       }
 
-      // Handle single profile
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const res = await fetchers[mal ? 'mal' : 'ani']();
-      return interaction.editReply({ 
-        embeds: typeof res === 'object' ? [res] : [], 
-        content: typeof res === 'string' ? res : null 
-      });
-
-    } catch (error) {
-      console.error('Error:', error);
-      const err = { content: 'An error occurred. Try again later.', flags: MessageFlags.Ephemeral };
-      interaction.deferred || interaction.replied ? await interaction.editReply(err) : await interaction.reply(err);
+      const res = await fetch[p.mal_username ? 'mal' : 'ani']();
+      interaction.editReply(typeof res === 'string' ? res : { embeds: [res] });
+    } catch (e) {
+      console.error(e);
+      interaction.deferred || interaction.replied ? interaction.editReply('Error.') : interaction.reply('Error.');
     }
   }
 };

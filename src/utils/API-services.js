@@ -148,11 +148,9 @@ const getSchedule = (type) => cached(
 
 async function getDailySchedule(day, airType = 'all') {
   const list = await getSchedule(airType);
-  return (list || []).filter(a => {
-    const d = new Date(a.episodeDate);
-    if (isNaN(d.getTime())) return false;
-    return d.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase() === day.toLowerCase();
-  });
+  return (list || []).filter(a =>
+    new Date(a.episodeDate).toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase() === day.toLowerCase()
+  );
 }
 
 async function getNextEpisode(titles) {

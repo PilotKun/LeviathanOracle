@@ -8,13 +8,13 @@
     "interval": 300000,
     "type": "WATCHING",
     "names": [
-      "LeviathanOracle v4.0.1",
+      "LeviathanOracle v4.1.0",
       "Anime News"
     ],
     "//_streamingUrl_note": "!=! This is only for the STREAMING activity type !=!",
     "streamingUrl": "https://www.twitch.tv/example",
     "//_customState_note": "!=! This is only for the CUSTOM activity type !=!",
-    "customState": "LeviathanOracle v4.0.1"
+    "customState": "LeviathanOracle v4.1.0"
   },
   "commandStats": {
     "enabled": true,
