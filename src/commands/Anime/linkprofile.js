@@ -8,6 +8,10 @@ const tracer = require('../../utils/tracer');
 const VERIFY_TTL = 10 * 60 * 1000;
 const pendingVerifications = new Map();
 
+function verificationContext(type) {
+  return `VERIFICATION: ${type === 'anilist' ? 'Anilist' : 'MAL'}`;
+}
+
 async function verifyMALUser(username) {
   try {
     const profile = await getMALUser(username);
@@ -68,7 +72,7 @@ async function handleLink(interaction) {
   const userId = interaction.user.id;
   const platform = PLATFORMS[type];
 
-  const t = tracer.start(`link:${type}`, { userId, username });
+  const t = tracer.start(verificationContext(type), { userId, username });
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
@@ -105,9 +109,9 @@ async function handleLink(interaction) {
 
     // 4. Token Verification Logic
     const token = getOrGenerateToken(userId, type, canonicalName);
-    const userProfile = account.profile || await platform.fetch(canonicalName).catch(() => null);
+    const userProfile = await platform.fetch(canonicalName, { fresh: true }).catch(() => account.profile || null);
     const aboutText = String(userProfile?.about || '');
-    const isVerified = aboutText.includes(token);
+    const isVerified = aboutText.toUpperCase().includes(token.toUpperCase());
 
     if (!isVerified) {
       t.info('Verification token issued');
@@ -145,7 +149,7 @@ async function finishLink(interaction, type, username, isUpdate = false) {
   return interaction.editReply({
     embeds: [embed({
       title: isUpdate ? '✅ Connection Updated' : '✅ Profile Linked',
-      desc: `Successfully connected to **${username}** on ${PLATFORMS[type].label}.`,
+      desc: `Successfully connected to **${username}** on ${PLATFORMS[type].label}. You may now remove the verification token from your profile.`,
       color: 0x00FF00
     })]
   });

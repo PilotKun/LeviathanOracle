@@ -269,10 +269,11 @@ async function getNextEpisode(titles) {
 
 // ── User Profiles ─────────────────────────────────────────────────────────────
 
-const getMALUser = (username) => cached(
-  `svc:mal:user:${username.toLowerCase()}`, TTL.profile,
-  () => jikanGet(`users/${username}`)
-);
+const getMALUser = (username, options = {}) => {
+  const key = `svc:mal:user:${username.toLowerCase()}`;
+  const fetcher = () => jikanGet(`users/${username}`);
+  return options.fresh ? fetcher() : cached(key, TTL.profile, fetcher);
+};
 
 const getMALUserStats = (username) => cached(
   `svc:mal:stats:${username.toLowerCase()}`, TTL.profile,
@@ -284,10 +285,11 @@ const getMALUserFavorites = (username) => cached(
   () => jikanGet(`users/${username}/favorites`)
 );
 
-const getAniListUser = (username) => cached(
-  `svc:anilist:user:${username.toLowerCase()}`, TTL.profile,
-  () => anilistPost(`query($u:String){User(name:$u){${USER_FIELDS}}}`, { u: username }).then(d => d.User)
-);
+const getAniListUser = (username, options = {}) => {
+  const key = `svc:anilist:user:${username.toLowerCase()}`;
+  const fetcher = () => anilistPost(`query($u:String){User(name:$u){${USER_FIELDS}}}`, { u: username }).then(d => d.User);
+  return options.fresh ? fetcher() : cached(key, TTL.profile, fetcher);
+};
 
 module.exports = {
   searchAnime, getAnimeDetails,
