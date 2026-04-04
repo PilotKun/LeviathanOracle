@@ -1,10 +1,11 @@
 const Redis = require('ioredis');
 const config = require('../../config.json');
+const tracer = require('../utils/tracer');
 
 const rdConfig = config.database.redis;
 
 if (!rdConfig?.enabled) {
-  console.log('\x1b[36mℹ INFO\x1b[0m  │ Redis is disabled, caching will not be applied.');
+  tracer.info('DATABASE: Redis', 'Redis is disabled, caching will not be applied.');
 }
 
 const client = rdConfig?.enabled ? new Redis({
@@ -13,8 +14,8 @@ const client = rdConfig?.enabled ? new Redis({
 }) : null;
 
 if (client) {
-  client.on('error', err => console.error('Redis Error:', err.message));
-  client.on('ready', () => console.log('Redis connected'));
+  client.on('error', err => tracer.error('DATABASE: Redis', 'Redis error', err));
+  client.on('ready', () => tracer.info('DATABASE: Redis', 'Redis connected'));
 }
 
 module.exports = {

@@ -13,7 +13,9 @@ async function insertAnime(userId, username, anime, fallback) {
   const title = anime?.title?.english || anime?.title?.romaji || fallback;
   if (!title) return false;
 
-  const { rowCount } = await db.query('SELECT 1 FROM watchlists WHERE user_id = $1 AND anime_title = $2', [userId, title]);
+  const { rowCount } = anime?.id
+    ? await db.query('SELECT 1 FROM watchlists WHERE user_id = $1 AND anime_id = $2', [userId, anime.id])
+    : await db.query('SELECT 1 FROM watchlists WHERE user_id = $1 AND anime_title = $2', [userId, title]);
   if (rowCount) return false;
 
   await db.query('INSERT INTO watchlists (user_id, discord_username, anime_title, anime_id) VALUES ($1, $2, $3, $4)', [userId, username, title, anime?.id || null]);
@@ -32,7 +34,7 @@ module.exports = {
     .setDescription('Manage your anime watchlist')
     .setContexts(InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel)
     .addSubcommand(s => s.setName('add').setDescription('Add anime').addStringOption(o => o.setName('title').setRequired(true).setAutocomplete(true).setDescription('Anime title')))
-    .addSubcommand(s => s.setName('remove').setDescription('Remove anime').addStringOption(o => o.setName('title').setRequired(true).setDescription('Anime title')))
+    .addSubcommand(s => s.setName('remove').setDescription('Remove anime').addStringOption(o => o.setName('title').setRequired(true).setDescription('Anime title or AniList ID')))
     .addSubcommand(s => s.setName('view').setDescription('View a watchlist').addUserOption(o => o.setName('user').setDescription('Target user')))
     .addSubcommand(s => s.setName('export').setDescription('Export list').addStringOption(o => o.setName('format').setRequired(true).addChoices({ name: 'MAL (XML)', value: 'mal' }, { name: 'AniList (JSON)', value: 'anilist' }).setDescription('Format')))
     .addSubcommand(s => s.setName('import').setDescription('Import list').addStringOption(o => o.setName('format').setRequired(true).addChoices({ name: 'MAL (XML)', value: 'mal' }, { name: 'AniList (JSON)', value: 'anilist' }).setDescription('Format')).addAttachmentOption(o => o.setName('file').setRequired(true).setDescription('Exported file'))),
@@ -55,14 +57,17 @@ module.exports = {
       remove: async () => {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         const { rows } = await db.query('SELECT * FROM watchlists WHERE user_id = $1', [uid]);
-        const match = bestMatch(input.toLowerCase(), rows, r => [r.anime_title])[0];
+        const numericInput = /^\d+$/.test(input) ? parseInt(input, 10) : null;
+        const match = numericInput
+          ? rows.find(r => parseInt(r.anime_id) === numericInput)
+          : bestMatch(input.toLowerCase(), rows, r => [r.anime_title])[0];
         if (!match) return reply(interaction, 'Not Found', 'No match found.', 'Yellow');
 
         await db.query('DELETE FROM watchlists WHERE id = $1', [match.id]);
-        const { rowCount: total } = await db.query('SELECT 1 FROM watchlists WHERE anime_title = $1 UNION SELECT 1 FROM role_notifications WHERE anime_title = $1', [match.anime_title]);
+        const { rowCount: total } = await db.query('SELECT 1 FROM watchlists WHERE anime_id = $1 UNION SELECT 1 FROM role_notifications WHERE anime_id = $1', [match.anime_id]);
         if (!total) {
-          const { rows: s } = await db.query('DELETE FROM schedules WHERE anime_title = $1 RETURNING anime_id', [match.anime_title]);
-          if (s[0]) scheduler.cancel(s[0].anime_id); // Safety fix: Added [0]
+          await db.query('DELETE FROM schedules WHERE anime_id = $1', [match.anime_id]);
+          scheduler.cancel(Number(match.anime_id));
         }
         return reply(interaction, 'Removed', `**${match.anime_title}** removed.`, 'Green');
       },

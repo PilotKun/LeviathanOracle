@@ -11,7 +11,7 @@ module.exports = {
     .setDescription('Manage role-based anime notifications')
     .setContexts(InteractionContextType.Guild)
     .addSubcommand(s => s.setName('add').setDescription('Add notification').addRoleOption(o => o.setName('role').setRequired(true).setDescription('Role')).addStringOption(o => o.setName('anime').setRequired(true).setAutocomplete(true).setDescription('Anime')))
-    .addSubcommand(s => s.setName('remove').setDescription('Remove notification').addRoleOption(o => o.setName('role').setRequired(true).setDescription('Role')).addStringOption(o => o.setName('anime').setRequired(true).setDescription('Anime title')))
+    .addSubcommand(s => s.setName('remove').setDescription('Remove notification').addRoleOption(o => o.setName('role').setRequired(true).setDescription('Role')).addStringOption(o => o.setName('anime').setRequired(true).setDescription('Anime title or AniList ID')))
     .addSubcommand(s => s.setName('list').setDescription('List notifications').addRoleOption(o => o.setName('role').setDescription('Filter by role'))),
 
   async execute(interaction) {
@@ -25,11 +25,12 @@ module.exports = {
         const a = Array.isArray(res) ? res[0] : res;
         if (!a) return 'Anime not found.';
 
-        const title = a.title.english || a.title.romaji, air = a.nextAiringEpisode?.airingAt * 1000;
-        const { rowCount } = await db.query('SELECT 1 FROM role_notifications WHERE role_id = $1 AND anime_title = $2', [role.id, title]);
+        const title = a.title.english || a.title.romaji;
+        const air = a.nextAiringEpisode?.airingAt * 1000;
+        const { rowCount } = await db.query('SELECT 1 FROM role_notifications WHERE role_id = $1 AND anime_id = $2', [role.id, a.id]);
         if (rowCount) return 'Already subscribed.';
 
-        await db.query('INSERT INTO role_notifications (role_id, guild_id, anime_title) VALUES ($1, $2, $3)', [role.id, gid, title]);
+        await db.query('INSERT INTO role_notifications (role_id, guild_id, anime_title, anime_id) VALUES ($1, $2, $3, $4)', [role.id, gid, title, a.id]);
         if (air) {
           await db.query('INSERT INTO schedules (anime_id, anime_title, next_airing_at) VALUES ($1, $2, $3) ON CONFLICT (anime_id) DO UPDATE SET next_airing_at = $3', [a.id, title, air]);
           scheduler.schedule({ anime_id: a.id, anime_title: title, next_airing_at: air });
@@ -39,16 +40,19 @@ module.exports = {
 
       remove: async () => {
         const { rows } = await db.query('SELECT * FROM role_notifications WHERE role_id = $1 AND guild_id = $2', [role.id, gid]);
-        const match = rows.find(r => r.anime_title.toLowerCase().includes(input.toLowerCase()));
+        const numericInput = /^\d+$/.test(input) ? parseInt(input, 10) : null;
+        const match = numericInput
+          ? rows.find(r => parseInt(r.anime_id) === numericInput)
+          : rows.find(r => r.anime_title.toLowerCase().includes(input.toLowerCase()));
         if (!match) return 'No notification found.';
 
         await db.query('DELETE FROM role_notifications WHERE id = $1', [match.id]);
-        
+
         // Cleanup if no one else is watching this anime
-        const { rowCount: watchers } = await db.query('SELECT 1 FROM role_notifications WHERE anime_title = $1 UNION SELECT 1 FROM watchlists WHERE anime_title = $1', [match.anime_title]);
+        const { rowCount: watchers } = await db.query('SELECT 1 FROM role_notifications WHERE anime_id = $1 UNION SELECT 1 FROM watchlists WHERE anime_id = $1', [match.anime_id]);
         if (!watchers) {
-          const { rows: s } = await db.query('DELETE FROM schedules WHERE anime_title = $1 RETURNING anime_id', [match.anime_title]);
-          if (s[0]) scheduler.cancel(s[0].anime_id);
+          await db.query('DELETE FROM schedules WHERE anime_id = $1', [match.anime_id]);
+          scheduler.cancel(Number(match.anime_id));
         }
         return { title: 'Removed', desc: `Stopped tracking **${match.anime_title}**`, color: 'Green' };
       },

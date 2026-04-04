@@ -1,13 +1,14 @@
 const config = require('../../config.json');
+const tracer = require('../utils/tracer');
 
 const db = config.database.postgresql?.enabled
   ? require('./postgres')
   : require('./sqlite3');
 
 if (config.database.postgresql?.enabled) {
-  console.log('\x1b[36mℹ INFO\x1b[0m  │ Using PostgreSQL database.');
+  tracer.info('DATABASE', 'Using PostgreSQL database.');
 } else {
-  console.log('\x1b[36mℹ INFO\x1b[0m  │ Using SQLite3 local database. Make sure you have enough disk space.');
+  tracer.info('DATABASE', 'PostgreSQL DB is disabled, Using SQLite3 local database. Make sure you have enough disk space in your local machine or server if you are hosting.');
 }
 
 module.exports = db;
