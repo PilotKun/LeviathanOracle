@@ -10,3 +10,4 @@ config.json
 localdb.db
 FetchTest.js
 errors/
+TODO.md
